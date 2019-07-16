@@ -1,0 +1,1 @@
+python3 freeze_graph.py --input_graph=trained2.pb --input_binary=True --input_checkpoint=checkpoints/checkpoint_sc2/ESPCN_ckpt_sc2 --output_graph=export/frozen_trained.pb --output_node_names=NCHW_output --frozen_graph=True

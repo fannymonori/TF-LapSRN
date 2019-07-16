@@ -274,7 +274,7 @@ def export(ARGS):
         graph_def = optimize_for_inference_lib.optimize_for_inference(graph_def, inputs, outputs, type)
         graph_def = TransformGraph(graph_def, inputs, outputs, ['sort_by_execution_order'])
 
-        filename = "export/stripped.pb"
+        filename = "export/LapSRN_" + str(ARGS['SCALE']) + ".pb"
         with tf.gfile.FastGFile(filename, 'wb') as f:
             f.write(graph_def.SerializeToString())
 

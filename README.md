@@ -7,19 +7,19 @@ Tensorflow implementation of LapSRN algorithm described in [1].
 To run the training:
 1. Download training dataset (DIV2K [2] [3])\
 `bash download_trainds.sh`
-2. Run the training for 3X scaling factor\
-`python main.py --train --scale 3` \
+2. Run the training for 4X scaling factor\
+`python main.py --train --scale 4` \
 or\
 Set training images directory\
-`python main.py --train --scale 3 --traindir /path/to/dir`
+`python main.py --train --scale 4 --traindir /path/to/dir`
 
 To run the test:\
-`python3 main.py --test --scale 3`\
-`python3 main.py --test --scale 3 --testimg /path/to/image`
+`python3 main.py --test --scale 4`\
+`python3 main.py --test --scale 4 --testimg /path/to/image`
 
 To export file to .pb format:
 1. Run the export script\
-`python3 main.py --export --scale 3`
+`python3 main.py --export --scale 4`
 
 \
 References

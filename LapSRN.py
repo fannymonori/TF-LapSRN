@@ -13,31 +13,50 @@ class LapSRN:
         self.num_of_components = int(math.floor(math.log(self.scale, 2)))
         self.learning_rate = learning_rate
         self.saver = ""
-        #self.filters_fe = list()
-        #self.biases_fe = list()
 
-        # self.size = tf.placeholder(tf.int32, shape=[2], name="dimensions")
-        self.size = tf.placeholder(tf.int32, shape=[4], name="dimensions")
-
-        #self.filter_initializer = tf.contrib.layers.variance_scaling_initializer()
-        self.filter_initializer = tf.contrib.layers.xavier_initializer_conv2d()
+        self.filter_initializer = tf.contrib.layers.variance_scaling_initializer()
+        #self.filter_initializer = tf.contrib.layers.xavier_initializer_conv2d()
         self.bias_initializer = tf.constant_initializer(value=0.1)
-        #self.deconv_bias = list()
 
         self.outputs = list()
 
-        self.global_step = ""
         self.global_step = tf.placeholder(tf.int32, shape=[], name="global_step")
 
+    def activation(self, layer):
+        return tf.nn.relu(layer) - 0.2 * tf.nn.relu(-1 * layer)
 
-    def bilinear_filter(self, scalef, channels):
+    def conv_layer(self, input_layer, filter, bias, name):
+        conv_layer = tf.nn.conv2d(input=input_layer, filter=filter, strides=[1, 1, 1, 1], padding='SAME')
+        conv_layer = self.activation(conv_layer + bias)
+        return conv_layer
+
+    def deconv_layer_pixel_shuffle(self, input_layer, channel_number, index):
+
+        current_scale = 2
+        filter_name = 'reconstruction_' + str(current_scale) + "_deconv_f"
+        filter = tf.Variable(initial_value=self.filter_initializer(shape=(4, 4, channel_number,
+                                                                          (current_scale * current_scale))),
+                             name=filter_name)
+
+        #conv2d_name = 'reconstruction_' + str(current_scale) + 'conv2d'
+        deconv_layer = tf.nn.conv2d(input=input_layer, filter=filter, strides=[1, 1, 1, 1], padding='SAME',
+                                    data_format='NHWC')
+        deconv_layer = tf.nn.depth_to_space(deconv_layer, current_scale, data_format='NHWC')
+
+        return deconv_layer
+
+    def upsample_layer(self, input_layer, channel_number, current_scale, index, name):
+        layer_upsampled = self.deconv_layer_pixel_shuffle(input_layer, channel_number, index)
+        #layer_upsampled = self.deconv_layer_transposed(input_layer, channel_number, current_scale, name)
+
+        return layer_upsampled
+
+    ## For transposed convolution
+    def bilinear_filter(self, channels):
         size = 4
-
         bilinear_f = np.zeros([size, size, 1, channels])
 
-        #factor = scalef
         factor = (size + 1) // 2
-
         c = factor - 0.5
 
         b = np.zeros((size, size))
@@ -51,59 +70,15 @@ class LapSRN:
 
         return tf.constant_initializer(value=bilinear_f, dtype=tf.float32)
 
-    def activation(self, layer):
-        #return tf.nn.leaky_relu(layer)
-        return tf.nn.relu(layer)-0.2 * tf.nn.relu(-1*layer)
-        #return tf.nn.relu(layer)
-
-
-    def conv_layer(self, input_layer, filter, bias, name):
-        filter_name = name + "conv2d"
-        conv_layer = tf.nn.conv2d(input=input_layer, filter=filter, strides=[1, 1, 1, 1], padding='SAME')
-        conv_layer = self.activation(conv_layer + bias)
-        return conv_layer
-
-
-    def deconv_layer_pixel_shuffle(self, input_layer, channel_number, index):
-
-        current_scale = 2
-        filter_name = 'reconstruction_' + str(current_scale) + "_deconv_f"
-        filter = tf.Variable(initial_value=self.filter_initializer(shape=(4, 4, channel_number,
-                                                                          (current_scale * current_scale))),name=filter_name)
-
-        conv2d_name = 'reconstruction_' + str(current_scale) + 'conv2d'
-        deconv_layer = tf.nn.conv2d(input=input_layer, filter=filter, strides=[1, 1, 1, 1], padding='SAME',
-                                data_format='NHWC')
-        deconv_layer = tf.nn.depth_to_space(deconv_layer, current_scale, data_format='NHWC')
-
-        return deconv_layer
-
-    def upsample_layer(self, input_layer, channel_number, current_scale, index, name):
-        layer_upsampled = self.deconv_layer_pixel_shuffle(input_layer, channel_number, index)
-        #layer_upsampled = self.deconv_layer_transposed(input_layer, channel_number, current_scale, name)
-
-        return layer_upsampled
-
     def deconv_layer_transposed(self, input_layer, channel_number, current_scale, name):
 
         filter_name = str(current_scale) + "_" + str(channel_number) + "transposed_filters_" + name
-        filter = tf.get_variable(initializer=self.bilinear_filter(2, channel_number), shape=[4, 4, 1, channel_number],name=filter_name)
-        #shape = tf.shape(input_layer)
-        #size = [shape[0], shape[1] * 2, shape[2] * 2, 1]
-
-        #w = int((128 / self.scale) * current_scale)
-        #size = tf.Variable([w, w])
-        #size = [shape[1] * 2, shape[2] * 2]
-        #size = [32, w, w, 1]
-
-        #deconv_layer = tf.nn.conv2d_transpose(value=input_layer, filter=filter, output_shape=size, strides=[1, 2, 2, 1], padding='SAME')
-
-        deconv_layer = tf.layers.conv2d_transpose(input_layer, 1, [4, 4], [2, 2], "same", "channels_last", None, False, self.bilinear_filter(2, channel_number))
-
-        #filter = tf.Variable(initial_value=self.filter_initializer(shape=(4, 4, channel_number, 1)),name=filter_name)
-        #l = tf.image.resize_images(images=input_layer, size=size, method=tf.image.ResizeMethod.NEAREST_NEIGHBOR)
-        #deconv_layer = tf.nn.conv2d(l, filter, [1, 1, 1, 1], padding='SAME', name=name)
-
+        filter = tf.get_variable(initializer=self.bilinear_filter(channel_number), shape=[4, 4, 1, channel_number],
+                                 name=filter_name)
+        shape = tf.shape(input_layer)
+        size = [shape[0], shape[1] * 2, shape[2] * 2, 1]
+        deconv_layer = tf.nn.conv2d_transpose(value=input_layer, filter=filter, output_shape=size, strides=[1, 2, 2, 1],
+                                              padding='SAME')
         return deconv_layer
 
     def deconv_layer_transposed_flip(self, input_layer, filter, channel_number, current_scale, name):
@@ -116,15 +91,15 @@ class LapSRN:
         filter_size = 3
 
         filter_0 = tf.Variable(initial_value=self.filter_initializer(shape=(filter_size, filter_size, 1, 64)),
-                    name="0_" + str(index) + "f")
+                               name="0_" + str(index) + "f")
         bias_0 = tf.get_variable(shape=[1], initializer=self.bias_initializer, name="0_" + str(index) + "bias")
-
 
         layer_fe = self.conv_layer(input_layer, filter_0, bias_0,
                                    name=str("input_") + str(index))
         for i in range(1, 10):
             filter = tf.Variable(initial_value=self.filter_initializer(shape=(filter_size, filter_size, 64, 64)))
-            bias = tf.get_variable(shape=[64], initializer=self.bias_initializer, name=str(i) + "_" + str(index) + "bias")
+            bias = tf.get_variable(shape=[64], initializer=self.bias_initializer,
+                                   name=str(i) + "_" + str(index) + "bias")
 
             layer_fe = self.conv_layer(layer_fe, filter, bias, name=str(i) + "_" + str(index) + "conv2d")
 
@@ -148,14 +123,12 @@ class LapSRN:
 
         for n in range(0, self.num_of_components):
             current_scale = pow(2, (n + 1))
-            # current_scale = 2
-            #print "Current scale: ", current_scale
 
             fe_output = self.feature_extraction(prev_fe_layer, current_scale, n)
 
             layer_re = self.upsample_layer(prev_re_layer, 1, current_scale, n, "re")
 
-            re_output = self.activation(tf.math.add(layer_re,fe_output))
+            re_output = self.activation(tf.math.add(layer_re, fe_output))
 
             prev_fe_layer = fe_output
             prev_re_layer = re_output
@@ -188,8 +161,6 @@ class LapSRN:
             decayed_lr = tf.train.exponential_decay(self.learning_rate,
                                                     self.global_step, 10000,
                                                     0.95, staircase=True)
-            #train_op = tf.contrib.opt.AdamWOptimizer(0.0001, learning_rate=self.learning_rate).minimize(loss)
-            #train_op = tf.train.AdamOptimizer(learning_rate=self.learning_rate).minimize(loss)
             train_op = tf.train.AdamOptimizer(learning_rate=decayed_lr).minimize(loss)
 
             losses.append(loss)
@@ -204,8 +175,6 @@ class LapSRN:
         # Charbonnier penalty function
         epsilon = 1e-6
         loss = tf.reduce_mean(tf.reduce_mean(tf.sqrt(tf.square(tf.subtract(HR_out, HR_orig)) + epsilon)))
-
-        # train_op = tf.train.AdamOptimizer(learning_rate=self.learning_rate).minimize(loss)
-        train_op = tf.contrib.opt.AdamWOptimizer(0.0001, learning_rate=self.learning_rate).minimize(loss)
+        train_op = tf.train.AdamOptimizer(learning_rate=decayed_lr).minimize(loss)
 
         return loss, train_op, psnr

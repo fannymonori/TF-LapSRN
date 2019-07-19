@@ -5,24 +5,21 @@ import numpy as np
 import os
 import logging
 import sys
-from operator import add
 import math
 
-from tensorflow.python.tools import freeze_graph
 from tensorflow.python.tools import optimize_for_inference_lib
 from tensorflow.tools.graph_transforms import TransformGraph
-#import tf_text_graph_common
 
-from tensorflow.python import debug as tf_debug
+# from tensorflow.python import debug as tf_debug
 
 import LapSRN
 import utils
 
-
 def create_dataset_generator(image_paths, scale):
     if scale == 2:
         return tf.data.Dataset.from_generator(
-            utils.gen_dataset_multiscale, (tf.float32, tf.float32), (tf.TensorShape([None, None, 1]), tf.TensorShape([None, None, 1])),
+            utils.gen_dataset_multiscale, (tf.float32, tf.float32),
+            (tf.TensorShape([None, None, 1]), tf.TensorShape([None, None, 1])),
             args=[image_paths, scale])
     elif scale == 4:
         return tf.data.Dataset.from_generator(
@@ -32,33 +29,30 @@ def create_dataset_generator(image_paths, scale):
     elif scale == 8:
         return tf.data.Dataset.from_generator(
             utils.gen_dataset_multiscale, (tf.float32, tf.float32, tf.float32, tf.float32),
-            (tf.TensorShape([None, None, 1]), tf.TensorShape([None, None, 1]), tf.TensorShape([None, None, 1]),tf.TensorShape([None, None, 1])),
+            (tf.TensorShape([None, None, 1]), tf.TensorShape([None, None, 1]), tf.TensorShape([None, None, 1]),
+             tf.TensorShape([None, None, 1])),
             args=[image_paths, scale])
+
 
 def get_model(scale, batch, lrate, iter):
     if scale == 2:
         LR, HR = iter.get_next()
         M = LapSRN.LapSRN(input=LR, scale=scale, batch_size=batch, learning_rate=lrate)
-        #model = M.LapSRN_model()
         outputs = M.LapSRN_model()
-        #loss, train_op, psnr = M.LapSRN_trainable_model_multi(outputs, HR)
         loss, train_op, psnr = M.LapSRN_trainable_model(outputs[0], HR)
         return loss, train_op, psnr, M
     if scale == 4:
         LR, HR_1, HR_2 = iter.get_next()
         M = LapSRN.LapSRN(input=LR, scale=scale, batch_size=batch, learning_rate=lrate)
-        #model = M.LapSRN_model()
         outputs = M.LapSRN_model()
         loss, train_op, psnr = M.LapSRN_trainable_model_multi(outputs, [HR_1, HR_2])
         return loss, train_op, psnr, M
     if scale == 8:
         LR, HR_1, HR_2, HR_3 = iter.get_next()
         M = LapSRN.LapSRN(input=LR, scale=scale, batch_size=batch, learning_rate=lrate)
-        # model = M.LapSRN_model()
         outputs = M.LapSRN_model()
         loss, train_op, psnr = M.LapSRN_trainable_model_multi(outputs, [HR_1, HR_2, HR_3])
         return loss, train_op, psnr, M
-
 
 def training(ARGS):
     """
@@ -91,7 +85,7 @@ def training(ARGS):
     loss, train_op, psnr, M = get_model(SCALE, BATCH, LRATE, iter)
 
     with tf.Session(config=config) as sess:
-        #sess = tf_debug.LocalCLIDebugWrapperSession(sess)
+        # sess = tf_debug.LocalCLIDebugWrapperSession(sess)
         sess.run(tf.global_variables_initializer())
         train_writer = tf.summary.FileWriter('./logs/train', sess.graph)
 
@@ -109,7 +103,7 @@ def training(ARGS):
         saver = tf.train.Saver()
 
         if SCALE > 2:
-            train_args = loss+train_op+psnr
+            train_args = loss + train_op + psnr
         else:
             train_args = [loss, train_op, psnr]
 
@@ -150,7 +144,9 @@ def training(ARGS):
                         for n in range(0, r):
                             log_msg = "Output #%d Loss: %s Epoch loss: %s Epoch PSNR: %s"
                             if SCALE > 2:
-                                logging.info(log_msg, n, "{:.9f}".format(l[n]), "{:.9f}".format(train_loss[n] / (count)), "{:.9f}".format(train_psnr[n] / (count)))
+                                logging.info(log_msg, n, "{:.9f}".format(l[n]),
+                                             "{:.9f}".format(train_loss[n] / (count)),
+                                             "{:.9f}".format(train_psnr[n] / (count)))
                             elif SCALE == 2:
                                 logging.info(log_msg, n, "{:.9f}".format(l),
                                              "{:.9f}".format(train_loss[0] / (count)),
@@ -188,7 +184,6 @@ def test(ARGS):
 
     LR_input_ = imgY.reshape(1, imgY.shape[0], imgY.shape[1], 1)
 
-
     with tf.Session(config=config) as sess:
         print("\nStart running tests on the model\n")
         # #load the model with tf.data generator
@@ -198,18 +193,19 @@ def test(ARGS):
         graph_def = sess.graph
 
         LR_tensor = sess.graph.get_tensor_by_name("IteratorGetNext:0")
-        inp = cv2.cvtColor((cropped.astype(np.float32) / 255.0), cv2.COLOR_BGR2YCrCb)[:,:,0].reshape(1, cropped.shape[0], cropped.shape[1], 1)
-        bicub = cv2.cvtColor(cv2.resize(cropped, None, fx=SCALE, fy=SCALE, interpolation=cv2.INTER_CUBIC), cv2.COLOR_BGR2YCrCb)
+        inp = cv2.cvtColor((cropped.astype(np.float32) / 255.0), cv2.COLOR_BGR2YCrCb)[:, :, 0].reshape(1,
+                                                                                                       cropped.shape[0],
+                                                                                                       cropped.shape[1],
+                                                                                                       1)
+        bicub = cv2.cvtColor(cv2.resize(cropped, None, fx=SCALE, fy=SCALE, interpolation=cv2.INTER_CUBIC),
+                             cv2.COLOR_BGR2YCrCb)
 
         output = sess.run(sess.graph.get_tensor_by_name("NCHW_output:0"), feed_dict={LR_tensor: inp})
-        #else:
-        #    size = graph_def.get_tensor_by_name("dimensions:0")
-        #    output = sess.run(sess.graph.get_tensor_by_name("NCHW_output:0"), feed_dict={LR_tensor: inp, size:[cropped.shape[0], cropped.shape[1]]})
 
         Y = output[0][0]
 
         cv2.imshow('LapSRN HR image', Y)
-        cv2.imshow('Bicubic HR image', bicub[:,:,0])
+        cv2.imshow('Bicubic HR image', bicub[:, :, 0])
         cv2.waitKey(0)
 
         LR_tensor = graph_def.get_tensor_by_name("IteratorGetNext:0")
@@ -217,21 +213,13 @@ def test(ARGS):
         HR_tensor = graph_def.get_tensor_by_name("NCHW_output:0")
 
         output = sess.run(HR_tensor, feed_dict={LR_tensor: LR_input_})
-        #else:
-        #    size = graph_def.get_tensor_by_name("dimensions:0")
-        #    output = sess.run(HR_tensor, feed_dict={LR_tensor: LR_input_, size: [imgY.shape[0], imgY.shape[1]]})
 
-        #Y = output[0]
         Y = output[0][0]
         Y = Y.reshape(Y.shape[0], Y.shape[1], 1)
         Cr = np.expand_dims(cv2.resize(imgYCbCr[:, :, 1], None, fx=SCALE, fy=SCALE, interpolation=cv2.INTER_CUBIC),
                             axis=2)
         Cb = np.expand_dims(cv2.resize(imgYCbCr[:, :, 2], None, fx=SCALE, fy=SCALE, interpolation=cv2.INTER_CUBIC),
                             axis=2)
-
-        print(Y.shape)
-        print(Cr.shape)
-        print(Cb.shape)
 
         HR_image_YCrCb = np.concatenate((Y, Cr, Cb), axis=2)
         HR_image = ((cv2.cvtColor(HR_image_YCrCb, cv2.COLOR_YCrCb2BGR)) * 255.0).clip(min=0, max=255)
@@ -248,6 +236,7 @@ def test(ARGS):
         cv2.imshow('Bicubic HR image', bicubic_image)
         cv2.waitKey(0)
 
+
 def export(ARGS):
     config = tf.ConfigProto()
     config.gpu_options.allow_growth = True
@@ -258,13 +247,13 @@ def export(ARGS):
         saver = tf.train.import_meta_graph(ckpt_name)
         saver.restore(sess, tf.train.latest_checkpoint(ARGS["CKPT_dir"]))
 
-        #SAVE NCHW
+        # SAVE NCHW
         graph_def = sess.graph.as_graph_def()
 
         inputs = ['IteratorGetNext']
 
         if ARGS['SCALE'] == 4:
-            outputs = ['NCHW_output','NCHW_output_0']
+            outputs = ['NCHW_output', 'NCHW_output_0']
         elif ARGS['SCALE'] == 8:
             outputs = ['NCHW_output', 'NCHW_output_0', 'NCHW_output_1']
         else:
@@ -278,28 +267,6 @@ def export(ARGS):
         with tf.gfile.FastGFile(filename, 'wb') as f:
             f.write(graph_def.SerializeToString())
 
-        # for i in reversed(range(len(graph_def.node))):
-        #     if graph_def.node[i].op == 'Const':
-        #         del graph_def.node[i]
-        #
-        #     for attr in ['T', 'data_format', 'Tshape', 'N', 'Tidx', 'Tdim',
-        #                  'use_cudnn_on_gpu', 'Index', 'Tperm', 'is_training',
-        #                  'Tpaddings']:
-        #         if attr in graph_def.node[i].attr:
-        #             del graph_def.node[i].attr[attr]
-
-        # Save stripped model.
-        tf.train.write_graph(graph_def, "", 'export/stripped.pbtxt', as_text=True)
-
-
-        #tf_text_graph_common.writeTextGraph('export/stripped.pb', 'export/stripped.pbtxt', outputs)
-
-        # outpath = freeze_graph.freeze_graph(input_graph="export/stripped.pbtxt",
-        #                              input_saver="", input_binary=False,
-        #                             input_checkpoint=ARGS["CKPT"], output_node_names='NCHW_output',
-        #                             restore_op_name="save/restore_all", initializer_nodes="", filename_tensor_name="",
-        #                             clear_devices=True,output_graph='export/stripped.pb')
-        #print(outpath)
+        # tf.train.write_graph(graph_def, "", 'export/stripped.pbtxt', as_text=True)
 
     print("\nExporting done!\n")
-

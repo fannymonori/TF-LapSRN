@@ -14,8 +14,7 @@ class LapSRN:
         self.learning_rate = learning_rate
         self.saver = ""
 
-        self.filter_initializer = tf.contrib.layers.variance_scaling_initializer()
-        #self.filter_initializer = tf.contrib.layers.xavier_initializer_conv2d()
+        self.filter_initializer = tf.contrib.layers.xavier_initializer_conv2d()
         self.bias_initializer = tf.constant_initializer(value=0.1)
 
         self.outputs = list()
@@ -38,7 +37,6 @@ class LapSRN:
                                                                           (current_scale * current_scale))),
                              name=filter_name)
 
-        #conv2d_name = 'reconstruction_' + str(current_scale) + 'conv2d'
         deconv_layer = tf.nn.conv2d(input=input_layer, filter=filter, strides=[1, 1, 1, 1], padding='SAME',
                                     data_format='NHWC')
         deconv_layer = tf.nn.depth_to_space(deconv_layer, current_scale, data_format='NHWC')
@@ -52,39 +50,34 @@ class LapSRN:
         return layer_upsampled
 
     ## For transposed convolution
-    def bilinear_filter(self, channels):
-        size = 4
-        bilinear_f = np.zeros([size, size, 1, channels])
-
-        factor = (size + 1) // 2
-        c = factor - 0.5
-
-        b = np.zeros((size, size))
-        for x in range(0, size):
-            for y in range(0, size):
-                K = (1 - abs((x - c) / factor)) * (1 - abs((y - c) / factor))
-                b[x, y] = K
-
-        for i in range(0, channels):
-            bilinear_f[:, :, 0, i] = b
-
-        return tf.constant_initializer(value=bilinear_f, dtype=tf.float32)
-
-    def deconv_layer_transposed(self, input_layer, channel_number, current_scale, name):
-
-        filter_name = str(current_scale) + "_" + str(channel_number) + "transposed_filters_" + name
-        filter = tf.get_variable(initializer=self.bilinear_filter(channel_number), shape=[4, 4, 1, channel_number],
-                                 name=filter_name)
-        shape = tf.shape(input_layer)
-        size = [shape[0], shape[1] * 2, shape[2] * 2, 1]
-        deconv_layer = tf.nn.conv2d_transpose(value=input_layer, filter=filter, output_shape=size, strides=[1, 2, 2, 1],
-                                              padding='SAME')
-        return deconv_layer
-
-    def deconv_layer_transposed_flip(self, input_layer, filter, channel_number, current_scale, name):
-        transposed_weights = tf.transpose(filter, perm=[0, 1, 3, 2])
-        transposed_weights = tf.reverse(transposed_weights, axis=[0, 1])
-        tf.nn.conv2d(input_layer, transposed_weights, strides=[1, 1, 1, 1], padding='SAME')
+    # def bilinear_filter(self, channels):
+    #     size = 4
+    #     bilinear_f = np.zeros([size, size, 1, channels])
+    #
+    #     factor = (size + 1) // 2
+    #     c = factor - 0.5
+    #
+    #     b = np.zeros((size, size))
+    #     for x in range(0, size):
+    #         for y in range(0, size):
+    #             K = (1 - abs((x - c) / factor)) * (1 - abs((y - c) / factor))
+    #             b[x, y] = K
+    #
+    #     for i in range(0, channels):
+    #         bilinear_f[:, :, 0, i] = b
+    #
+    #     return tf.constant_initializer(value=bilinear_f, dtype=tf.float32)
+    #
+    # def deconv_layer_transposed(self, input_layer, channel_number, current_scale, name):
+    #
+    #     filter_name = str(current_scale) + "_" + str(channel_number) + "transposed_filters_" + name
+    #     filter = tf.get_variable(initializer=self.bilinear_filter(channel_number), shape=[4, 4, 1, channel_number],
+    #                              name=filter_name)
+    #     shape = tf.shape(input_layer)
+    #     size = [shape[0], shape[1] * 2, shape[2] * 2, 1]
+    #     deconv_layer = tf.nn.conv2d_transpose(value=input_layer, filter=filter, output_shape=size, strides=[1, 2, 2, 1],
+    #                                           padding='SAME')
+    #     return deconv_layer
 
     def feature_extraction(self, input_layer, current_scale, index):
 
@@ -135,7 +128,8 @@ class LapSRN:
 
             outputs.append(re_output)
 
-            output_name = "NCHW_output_" + str(n)
+            #output_name = "NCHW_output_" + str(n)
+            output_name = "NCHW_output_" + str(current_scale) + "x"
             tf.transpose(re_output, [0, 3, 1, 2], name=output_name)
 
         out_nchw = tf.transpose(re_output, [0, 3, 1, 2], name="NCHW_output")
@@ -175,6 +169,9 @@ class LapSRN:
         # Charbonnier penalty function
         epsilon = 1e-6
         loss = tf.reduce_mean(tf.reduce_mean(tf.sqrt(tf.square(tf.subtract(HR_out, HR_orig)) + epsilon)))
+        decayed_lr = tf.train.exponential_decay(self.learning_rate,
+                                                self.global_step, 10000,
+                                                0.95, staircase=True)
         train_op = tf.train.AdamOptimizer(learning_rate=decayed_lr).minimize(loss)
 
         return loss, train_op, psnr

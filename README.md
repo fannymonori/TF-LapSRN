@@ -1,8 +1,6 @@
 # TF-LapSRN
 
-Implementation is not finished!
-
-Tensorflow implementation of LapSRN algorithm described in [1].
+Tensorflow implementation of LapSRN algorithm described in [1]. It can now support training for 2x, 4x, and 8x scaling factor.
 
 To run the training:
 1. Download training dataset (DIV2K [2] [3])\

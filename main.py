@@ -9,10 +9,9 @@ if __name__ == "__main__":
     parser.add_argument('--export', help='Export model to .pb and .pbtxt format', action="store_true")
     parser.add_argument('--traindir', help='Training images directory', default="./Test")
     parser.add_argument('--testimg', help='Test image', default="./Test/t1.png")
-    parser.add_argument('--scale', help='Scaling factor of the model', default=2)
+    parser.add_argument('--scale', help='Scaling factor of the model', default=4)
     parser.add_argument('--epoch', help='Number of epochs during training', default=100)
-    parser.add_argument('--lr', help='Sets the learning rate', default=0.01)
-    parser.add_argument('--deconv', help='Use transposed convolution layer', action="store_true")
+    parser.add_argument('--lr', help='Sets the learning rate', default=0.0001)
     args = parser.parse_args()
 
     ARGS = dict()
@@ -28,11 +27,6 @@ if __name__ == "__main__":
     ARGS["EPOCH_NUM"] = int(args.epoch)
     ARGS["TESTIMG"] = args.testimg
     ARGS["LRATE"] = float(args.lr)
-
-    # if args.deconv:
-    #     ARGS["DECONV"] = "TRC"
-    # else:
-    #     ARGS["DECONV"] = "PS"
 
     if args.train:
         run.training(ARGS)

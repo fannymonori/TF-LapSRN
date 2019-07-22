@@ -112,7 +112,6 @@ def training(ARGS):
             count = 0
 
             r = int(math.log(SCALE, 2))
-            print(r)
             train_loss = np.zeros(r, dtype=float)
             train_psnr = np.zeros(r, dtype=float)
 
@@ -253,9 +252,9 @@ def export(ARGS):
         inputs = ['IteratorGetNext']
 
         if ARGS['SCALE'] == 4:
-            outputs = ['NCHW_output', 'NCHW_output_0']
+            outputs = ['NCHW_output', 'NCHW_output_2x', 'NCHW_output_4x']
         elif ARGS['SCALE'] == 8:
-            outputs = ['NCHW_output', 'NCHW_output_0', 'NCHW_output_1']
+            outputs = ['NCHW_output', 'NCHW_output_2x', 'NCHW_output_4x', 'NCHW_output_8x']
         else:
             outputs = ['NCHW_output']
         type = ["DT_FLOAT"]
@@ -263,10 +262,8 @@ def export(ARGS):
         graph_def = optimize_for_inference_lib.optimize_for_inference(graph_def, inputs, outputs, type)
         graph_def = TransformGraph(graph_def, inputs, outputs, ['sort_by_execution_order'])
 
-        filename = "export/LapSRN_" + str(ARGS['SCALE']) + ".pb"
+        filename = "export/LapSRN_x" + str(ARGS['SCALE']) + ".pb"
         with tf.gfile.FastGFile(filename, 'wb') as f:
             f.write(graph_def.SerializeToString())
-
-        # tf.train.write_graph(graph_def, "", 'export/stripped.pbtxt', as_text=True)
 
     print("\nExporting done!\n")

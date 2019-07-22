@@ -3,8 +3,6 @@ import math
 import cv2
 from sklearn.feature_extraction import image
 import random
-import tensorflow as tf
-
 
 def PSNR(orig, reconstr):
     mse = np.mean((orig.astype(float) - reconstr.astype(float)) ** 2)
@@ -29,8 +27,6 @@ def gen_dataset(filenames, scale):
 
     crop_size_lr = int(size / scale)
     crop_size_hr = size
-
-    print(size, scale, crop_size_hr, crop_size_lr)
 
     for p in filenames:
         image_decoded = cv2.imread(p.decode(), 3).astype(np.float32) / 255.0
@@ -93,27 +89,22 @@ def gen_dataset_multiscale(filenames, scale):
             hr_augmented = p
 
             #random rotation
-            # M = cv2.getRotationMatrix2D((size / 2, size / 2), random.choice(rotate_factor), 1)
-            #
-            # hr_augmented = cv2.warpAffine(p, M, (size, size))
-            #
-            # #random flip
-            # flip = random.choice(flip_factor)
-            # if flip != 2:
-            #     hr_augmented = cv2.flip(hr_augmented, flipCode=flip)
+            M = cv2.getRotationMatrix2D((size / 2, size / 2), random.choice(rotate_factor), 1)
 
+            hr_augmented = cv2.warpAffine(p, M, (size, size))
 
+            #random flip
+            flip = random.choice(flip_factor)
+            if flip != 2:
+                hr_augmented = cv2.flip(hr_augmented, flipCode=flip)
 
             lr = cv2.resize(hr_augmented, (crop_size_lr, crop_size_lr),
                         interpolation=cv2.INTER_CUBIC).reshape((crop_size_lr, crop_size_lr, 1))
 
             hr_patches = list()
 
-            #print(hr_augmented.shape)
-
             crop_size_lr_tmp = crop_size_lr * 2
             for n in range(0, num_of_components):
-                #print(crop_size_lr_tmp)
                 tmp = cv2.resize(hr_augmented, (crop_size_lr_tmp, crop_size_lr_tmp),
                         interpolation=cv2.INTER_CUBIC).reshape((crop_size_lr_tmp, crop_size_lr_tmp, 1))
                 hr_patches.append(tmp)
@@ -121,11 +112,8 @@ def gen_dataset_multiscale(filenames, scale):
             #hr = hr_augmented.reshape((crop_size_hr, crop_size_hr, 1))
 
             if scale == 2:
-                #print(hr_patches[0].shape)
                 yield lr, hr_patches[0]
             elif scale == 4:
-                #print(hr_patches[0].shape, hr_patches[1].shape, lr.shape)
                 yield lr, hr_patches[0], hr_patches[1]
             elif scale == 8:
-                #print(hr_patches[0].shape, hr_patches[1].shape, hr_patches[2].shape)
                 yield lr, hr_patches[0],hr_patches[1], hr_patches[2]

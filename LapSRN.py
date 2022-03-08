@@ -2,11 +2,10 @@ import tensorflow as tf
 import math
 import numpy as np
 import itertools
-from keras.applications.vgg19 import VGG19
-
+from VGGLoss import VGGLoss
 
 class LapSRN:
-    def __init__(self, input, scale, batch_size, learning_rate):
+    def __init__(self, input, scale, batch_size, learning_rate, vgg_layer, input_shape=(128, 128)):
         self.LR_input = input   # Low resolution inputs
         self.batch_size = batch_size
         self.scale = int(scale)
@@ -17,7 +16,7 @@ class LapSRN:
         self.bias_initializer = tf.constant_initializer(value=0.1)
         self.outputs = list()
         self.global_step = tf.compat.v1.placeholder(tf.int32, shape=[], name="global_step")
-        self.vgg = VGG19(include_top=False, input_shape=(128, 128, 3))
+        self.loss = VGGLoss(input_shape, vgg_layer)
 
     def activation(self, layer):
         return tf.nn.relu(layer) - 0.2 * tf.nn.relu(-1 * layer)
@@ -126,9 +125,8 @@ class LapSRN:
         for n in range(0, len(HR_outputs)):
             psnr = tf.image.psnr(HR_outputs[n], HR_origs[n], max_val=1.0)
 
-            # Charbonnier penalty function
-            epsilon = 1e-6
-            loss = tf.reduce_mean(tf.reduce_mean(tf.sqrt(tf.square(tf.subtract(HR_outputs[n], HR_origs[n])) + epsilon)))
+            loss = self.loss.compute_loss(HR_outputs[n], HR_origs[n])
+
 
             decayed_lr = tf.train.exponential_decay(self.learning_rate,
                                                     self.global_step, 10000,
@@ -144,9 +142,7 @@ class LapSRN:
     def LapSRN_trainable_model(self, HR_out, HR_orig):
         psnr = tf.image.psnr(HR_out, HR_orig, max_val=1.0)
 
-        # Charbonnier penalty function
-        epsilon = 1e-6
-        loss = tf.reduce_mean(tf.reduce_mean(tf.sqrt(tf.square(tf.subtract(HR_out, HR_orig)) + epsilon)))
+        loss = self.loss.compute_loss(HR_out, HR_orig)
         decayed_lr = tf.train.exponential_decay(self.learning_rate,
                                                 self.global_step, 10000,
                                                 0.95, staircase=True)
@@ -154,7 +150,3 @@ class LapSRN:
 
         return loss, train_op, psnr
 
-    def fuck(self, img1, img2):
-        img_tens = tf.constant([img1, img1, img1])
-        img_tens = tf.reshape(img_tens.shape[1], img_tens.shape[2], img_tens.shape[0])
-        img_tens = tf.expand_dims(img_tens, axis=0)

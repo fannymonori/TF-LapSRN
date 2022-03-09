@@ -8,86 +8,76 @@ import sys
 import math
 
 from tensorflow.python.tools import optimize_for_inference_lib
-from tensorflow.tools.graph_transforms import TransformGraph
+# from tensorflow.tools.graph_transforms import TransformGraph
 
 # from tensorflow.python import debug as tf_debug
 
 import LapSRN
 import utils
 
-def create_dataset_generator(image_paths, scale):
-    if scale == 2:
-        return tf.data.Dataset.from_generator(
-            utils.gen_dataset_multiscale, (tf.float32, tf.float32),
-            (tf.TensorShape([None, None, 1]), tf.TensorShape([None, None, 1])),
-            args=[image_paths, scale])
-    elif scale == 4:
-        return tf.data.Dataset.from_generator(
-            utils.gen_dataset_multiscale, (tf.float32, tf.float32, tf.float32),
-            (tf.TensorShape([None, None, 1]), tf.TensorShape([None, None, 1]), tf.TensorShape([None, None, 1])),
-            args=[image_paths, scale])
-    elif scale == 8:
-        return tf.data.Dataset.from_generator(
-            utils.gen_dataset_multiscale, (tf.float32, tf.float32, tf.float32, tf.float32),
-            (tf.TensorShape([None, None, 1]), tf.TensorShape([None, None, 1]), tf.TensorShape([None, None, 1]),
-             tf.TensorShape([None, None, 1])),
-            args=[image_paths, scale])
+
+def create_dataset_generator(lr_dir, hr_dir):
+    return tf.data.Dataset.from_generator(utils.retrieve_image_couples,
+                                          output_signature=(tf.TensorSpec(shape=(None, None, 1), dtype=tf.float32),
+                                                            tf.TensorSpec(shape=(None, None, 1), dtype=tf.float32)),
+                                          args=[lr_dir, hr_dir])
 
 
 def get_model(scale, batch, lrate, iter):
     if scale == 2:
-        LR, HR = iter.get_next()
+        LR, HR = next(iter)
         M = LapSRN.LapSRN(input=LR, scale=scale, batch_size=batch, learning_rate=lrate)
         outputs = M.LapSRN_model()
         loss, train_op, psnr = M.LapSRN_trainable_model(outputs[0], HR)
         return loss, train_op, psnr, M
     if scale == 4:
-        LR, HR_1, HR_2 = iter.get_next()
+        LR, HR_1, HR_2 = next(iter)
         M = LapSRN.LapSRN(input=LR, scale=scale, batch_size=batch, learning_rate=lrate)
         outputs = M.LapSRN_model()
         loss, train_op, psnr = M.LapSRN_trainable_model_multi(outputs, [HR_1, HR_2])
         return loss, train_op, psnr, M
-    if scale == 8:
-        LR, HR_1, HR_2, HR_3 = iter.get_next()
-        M = LapSRN.LapSRN(input=LR, scale=scale, batch_size=batch, learning_rate=lrate)
-        outputs = M.LapSRN_model()
-        loss, train_op, psnr = M.LapSRN_trainable_model_multi(outputs, [HR_1, HR_2, HR_3])
-        return loss, train_op, psnr, M
 
-def training(ARGS):
+
+def training():
     """
     Start training the LapSRN model.
     """
-
     print("\nStarting training...\n")
 
     logging.getLogger().addHandler(logging.StreamHandler(sys.stdout))
     logging.getLogger().setLevel(logging.INFO)
 
-    SCALE = ARGS["SCALE"]
+    ''' SCALE = ARGS["SCALE"]
     BATCH = 32
     EPOCHS = ARGS["EPOCH_NUM"]
-    DATA = pathlib.Path(ARGS["TRAINDIR"])
     LRATE = ARGS["LRATE"]
-
-    all_image_paths = list(DATA.glob('*'))
-    all_image_paths = [str(path) for path in all_image_paths]
-
-    config = tf.ConfigProto()
+    lr_dir = ARGS["LR_DIR"]
+    hr_dir = ARGS["HR_DIR"]'''
+    SCALE=2
+    BATCH=32
+    EPOCHS=10
+    LRATE=0.0001
+    lr_dir = "dataset/train/lr_x2/train"
+    hr_dir = "dataset/train/gt/x2_train"
+    config = tf.compat.v1.ConfigProto()
     config.gpu_options.allow_growth = True
 
-    ds = create_dataset_generator(all_image_paths, SCALE)
+    ds = create_dataset_generator(lr_dir, hr_dir)
 
-    train_dataset = ds.batch(BATCH)
+    train_dataset = ds.batch(BATCH)     # Will create batches, each of them is a tuple of two lists, the first containing 32 hr images and the second containing 32 lr images
     train_dataset = train_dataset.shuffle(10000)
-    iter = train_dataset.make_initializable_iterator()
+    iterator = iter(train_dataset)
+    '''
+    for batch in train:
+        im1 = batch[0][0]
+        im2 = batch[1][0]   
+    '''
+    loss, train_op, psnr, M = get_model(SCALE, BATCH, LRATE, iterator)
 
-    loss, train_op, psnr, M = get_model(SCALE, BATCH, LRATE, iter)
-
-    with tf.Session(config=config) as sess:
+    with tf.compat.v1.Session(config=config) as sess:
         # sess = tf_debug.LocalCLIDebugWrapperSession(sess)
-        sess.run(tf.global_variables_initializer())
-        train_writer = tf.summary.FileWriter('./logs/train', sess.graph)
+        sess.run(tf.compat.v1.global_variables_initializer())
+        train_writer = tf.compat.v1.summary.FileWriter('./logs/train', sess.graph)
 
         saver = M.saver
         if not os.path.exists(ARGS["CKPT_dir"]):
@@ -100,7 +90,7 @@ def training(ARGS):
                 print("Previous checkpoint does not exists.")
 
         # training with tf.data method
-        saver = tf.train.Saver()
+        saver = tf.compat.v1.train.Saver()
 
         if SCALE > 2:
             train_args = loss + train_op + psnr
@@ -108,7 +98,6 @@ def training(ARGS):
             train_args = [loss, train_op, psnr]
 
         for e in range(EPOCHS):
-            sess.run(iter.initializer)
             count = 0
 
             r = int(math.log(SCALE, 2))
@@ -118,7 +107,6 @@ def training(ARGS):
             while True:
                 try:
                     count = count + 1
-
                     lt = list(sess.run(train_args, feed_dict={M.global_step: count}))
 
                     if SCALE == 2:
@@ -127,9 +115,6 @@ def training(ARGS):
                     elif SCALE == 4:
                         l = lt[0:2]
                         ps = lt[4:6]
-                    elif SCALE == 8:
-                        l = lt[0:3]
-                        ps = lt[6:9]
 
                     train_loss += l
 
@@ -152,15 +137,12 @@ def training(ARGS):
                                              "{:.9f}".format(train_psnr[0] / (count)))
 
                         saver.save(sess, ARGS["CKPT"])
-
                 except tf.errors.OutOfRangeError:
                     break
-
             saver.save(sess, ARGS["CKPT"])
-
         train_writer.close()
 
-
+'''
 def test(ARGS):
     config = tf.ConfigProto()
     config.gpu_options.allow_growth = True
@@ -267,3 +249,7 @@ def export(ARGS):
             f.write(graph_def.SerializeToString())
 
     print("\nExporting done!\n")
+'''
+
+if __name__ == '__main__':
+    training()

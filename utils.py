@@ -8,6 +8,7 @@ import random
 import argparse
 from tqdm import tqdm
 
+
 def PSNR(orig, reconstr):
     mse = np.mean((orig.astype(float) - reconstr.astype(float)) ** 2)
     if mse != 0:
@@ -82,6 +83,21 @@ def display_images(img1, img2):
     fig.add_subplot(1,2,2)
     plt.imshow(img2)
     plt.axis('off')
+
+
+def retrieve_image_matrix(path):
+    with open(path, 'rb') as f:
+        return np.load(f)
+
+
+def retrieve_image_couples(lr_dir, hr_dir):
+    lr_dir = lr_dir.decode()
+    hr_dir = hr_dir.decode()
+    for im in os.listdir(hr_dir):
+        lr_im_name = im.replace("h", "l")
+        hr_im = retrieve_image_matrix(os.path.join(hr_dir, im))
+        lr_im = retrieve_image_matrix(os.path.join(lr_dir, lr_im_name))
+        yield lr_im.reshape((lr_im.shape[0], lr_im.shape[1], 1)), hr_im.reshape((hr_im.shape[0], hr_im.shape[1], 1))
 
 
 def save_set(ls, folder):

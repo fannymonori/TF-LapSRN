@@ -3,28 +3,24 @@ import math
 import numpy as np
 import itertools
 from VGGLoss import VGGLoss
+from keras.layers import Conv2DTranspose, Conv2D, LeakyReLU
+from keras.utils.generic_utils import get_custom_objects
 
 class LapSRN:
-    def __init__(self, input, scale, batch_size, learning_rate, vgg_layer, input_shape=(128, 128)):
+    def __init__(self, input, scale, batch_size, learning_rate, alpha, vgg_layer='block5_conv4', input_shape=(128, 128)):
         self.LR_input = input   # Low resolution inputs
         self.batch_size = batch_size
         self.scale = int(scale)
         self.num_of_components = int(math.floor(math.log(self.scale, 2)))
         self.learning_rate = learning_rate
-        self.saver = ""
+        self.alpha = alpha
         self.filter_initializer = tf.keras.initializers.GlorotNormal()
         self.bias_initializer = tf.constant_initializer(value=0.1)
         self.outputs = list()
-        self.global_step = tf.compat.v1.placeholder(tf.int32, shape=[], name="global_step")
         self.loss = VGGLoss(input_shape, vgg_layer)
 
     def activation(self, layer):
         return tf.nn.relu(layer) - 0.2 * tf.nn.relu(-1 * layer)
-
-    def conv_layer(self, input_layer, filter, bias):
-        conv_layer = tf.nn.conv2d(input=input_layer, filter=filter, strides=[1, 1, 1, 1], padding='SAME')
-        conv_layer = self.activation(conv_layer + bias)
-        return conv_layer
 
     def subpixel(self, X: tf.Tensor, upscale_factor):
         # Implementation of subpixel layer provided on https://neuralpixels.com/subpixel-upscaling/
@@ -49,22 +45,14 @@ class LapSRN:
         out = tf.nn.conv2d_transpose(X, kernel, tf_shape, strides_shape, padding='VALID')
         return out
 
-    def deconv_layer_pixel_shuffle(self, input_layer, channel_number):
+    def deconv_layer_pixel_shuffle(self, input_layer, channels):
         """Layer used for upsampling the image"""
-        current_scale = 2
-        filter_name = 'reconstruction_' + str(current_scale) + "_deconv_f"
-        filter = tf.Variable(initial_value=self.filter_initializer(shape=(4, 4, channel_number,
-                                                                          (current_scale * current_scale))),
-                             name=filter_name)
-
-        deconv_layer = tf.nn.conv2d(input=input_layer, filter=filter, strides=[1, 1, 1, 1], padding='SAME',
-                                    data_format='NHWC')
-        deconv_layer = tf.nn.depth_to_space(deconv_layer, current_scale, data_format='NHWC')
-
+        upscale_factor = 2
+        deconv_layer = Conv2D(filters=upscale_factor*upscale_factor*channels, kernel_size=4, strides=[1, 1, 1, 1], padding='SAME', data_format='NHWC')(input_layer)
+        deconv_layer = tf.nn.depth_to_space(deconv_layer, upscale_factor, data_format='NHWC')
         return deconv_layer
 
     def feature_upsample_layer(self, input_layer, scale):
-        # layer_upsampled = self.deconv_layer_pixel_shuffle(input_layer, channel_number)
         layer_upsampled = self.subpixel(input_layer, scale)
         return layer_upsampled
 
@@ -72,39 +60,26 @@ class LapSRN:
         layer_upsampled = self.deconv_layer_pixel_shuffle(input_layer, channel)
         return layer_upsampled
 
-    def feature_extraction(self, input_layer, index):
+    def feature_extraction_block(self, input_layer):
         """
         Feature extraction subnetwork. It is made of a cascade of convolutional layers followed by the upsampling layer
         """
-        filter_size = 3
-        filter_0 = tf.Variable(initial_value=self.filter_initializer(shape=(filter_size, filter_size, 1, 64)),
-                               name="0_" + str(index) + "f")
-        bias_0 = tf.compat.v1.get_variable(shape=[1], initializer=self.bias_initializer, name="0_" + str(index) + "bias")     # get the variable with the specified name
-        layer_fe = self.conv_layer(input_layer, filter_0, bias_0)
+        layer_fe = LeakyReLU(alpha=self.alpha)(input_layer)
         for i in range(1, 10):
-            filter = tf.Variable(initial_value=self.filter_initializer(shape=(filter_size, filter_size, 64, 64)))
-            bias = tf.compat.v1.get_variable(shape=[64], initializer=self.bias_initializer,
-                                   name=str(i) + "_" + str(index) + "bias")
-            layer_fe = self.conv_layer(layer_fe, filter, bias)
-
+            layer_fe = Conv2D(filters=64, kernel_size=3, strides=[1, 1, 1, 1])(layer_fe)
+            layer_fe = LeakyReLU(alpha=self.alpha)(layer_fe)
+        layer_fe += input_layer     # Residual connection
         layer_fe = self.feature_upsample_layer(layer_fe, 2)
-        return self.activation(layer_fe)
+        return layer_fe
 
     def LapSRN_model(self):
-        """
-        Implementation of LapSRN
-
-        Returns
-        ----------
-        Model
-        """
         outputs = list()
         prev_fe_layer = self.LR_input
         prev_re_layer = self.LR_input
 
         for n in range(0, self.num_of_components):
             current_scale = pow(2, (n + 1))
-            fe_output = self.feature_extraction(prev_fe_layer, n)
+            fe_output = self.feature_extraction_block(prev_fe_layer)
             upsampled_image = self.image_upsample_layer(prev_re_layer, 1)
             re_output = self.activation(tf.math.add(upsampled_image, fe_output))
 
@@ -126,12 +101,9 @@ class LapSRN:
             psnr = tf.image.psnr(HR_outputs[n], HR_origs[n], max_val=1.0)
 
             loss = self.loss.compute_loss(HR_outputs[n], HR_origs[n])
-
-
-            decayed_lr = tf.train.exponential_decay(self.learning_rate,
-                                                    self.global_step, 10000,
-                                                    0.95, staircase=True)
-            train_op = tf.train.AdamOptimizer(learning_rate=decayed_lr).minimize(loss)
+            decayed_lr = tf.keras.optimizers.schedule.ExponentialDecay(self.learning_rate, 10000, 0.95, staircase=True)
+            # decayed_lr = tf.train.exponential_decay(self.learning_rate, self.global_step, 10000, 0.95, staircase=True)
+            train_op = tf.keras.optimizers.Adam(learning_rate=decayed_lr).minimize(loss)
 
             losses.append(loss)
             train_ops.append(train_op)
@@ -143,10 +115,9 @@ class LapSRN:
         psnr = tf.image.psnr(HR_out, HR_orig, max_val=1.0)
 
         loss = self.loss.compute_loss(HR_out, HR_orig)
-        decayed_lr = tf.train.exponential_decay(self.learning_rate,
-                                                self.global_step, 10000,
-                                                0.95, staircase=True)
-        train_op = tf.train.AdamOptimizer(learning_rate=decayed_lr).minimize(loss)
+        decayed_lr = tf.keras.optimizers.schedule.ExponentialDecay(self.learning_rate, 10000, 0.95, staircase=True)
+        # decayed_lr = tf.train.exponential_decay(self.learning_rate, self.global_step, 10000, 0.95, staircase=True)
+        train_op = tf.keras.optimizers.Adam(learning_rate=decayed_lr).minimize(loss)
 
         return loss, train_op, psnr
 

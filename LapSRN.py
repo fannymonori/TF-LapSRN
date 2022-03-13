@@ -9,10 +9,8 @@ from keras.utils.generic_utils import get_custom_objects
 from tensorflow.keras.optimizers import schedules
 
 class LapSRN:
-    def __init__(self, input, scale, batch_size, learning_rate, alpha, vgg_layer='block5_conv4', input_shape=(128, 128)):
-        self.LR_input = input   # Low resolution inputs
+    def __init__(self, scale, learning_rate, alpha=0.2, vgg_layer='block5_conv4', input_shape=(128, 128)):
         self.input_shape = input_shape
-        self.batch_size = batch_size
         self.scale = int(scale)
         self.num_of_components = int(math.floor(math.log(self.scale, 2)))
         self.learning_rate = learning_rate
@@ -135,8 +133,8 @@ import numpy as np
 from tensorflow.keras.optimizers import schedules
 import tensorflow as tf
 
-lr_im = "dataset/train/lr_x2/train/lr_10_0.npy"
-hr_im = "dataset/train/gt/x2_train/hr_10_0.npy"
+lr_im = "raw_dataset/train/lr_x2/train/lr_10_0.npy"
+hr_im = "raw_dataset/train/gt/x2_train/hr_10_0.npy"
 with open(lr_im, 'rb') as f:
     im = np.load(f)
 

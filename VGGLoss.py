@@ -13,8 +13,7 @@ class VGGLoss:
         """
         Compute the perceptual loss between two images by calculating the mean squared error between the feature maps
         that the VGG19 computed for each of the two images at a specific layer. Since the images are single channel and
-        the VGG expects 3-channel images, they are repeated thrice along the axis 2 in order to create a suitable input
-        for the network
+        the VGG expects 3-channel images, they are concatenated thrice in order to create a suitable input for the network
         :param predicted_image:
         :param ground_truth_image:
         :return:
@@ -23,5 +22,4 @@ class VGGLoss:
         img_gt_tens = Concatenate()([ground_truth_image, ground_truth_image, ground_truth_image])
         img_lr_feats = self.model(img_predicted_tens)
         img_hr_feats = self.model(img_gt_tens)
-        c = tf.reduce_mean(tf.subtract(img_hr_feats, img_lr_feats)**2, [1, 2, 3])
         return tf.reduce_mean(tf.subtract(img_hr_feats, img_lr_feats)**2, [1, 2, 3])

@@ -25,7 +25,7 @@ def create_directory(n):
 
 def gen_dataset_multiscale(lr_dir, hr_dir, scale):
     """
-    Generate the training dataset starting from the images. The training data consists of patches of shape 128*128 extracted
+    Generate the training raw_dataset starting from the images. The training data consists of patches of shape 128*128 extracted
     from the images. Data augmentation is performed (random rotation, flipping)
     :param lr_dir: Directory containing the low resolution images
     :param hr_dir: Directory containing the high resolution images
@@ -37,9 +37,9 @@ def gen_dataset_multiscale(lr_dir, hr_dir, scale):
     size = 128
     if size % scale != 0:
         size = (size % scale) + size - 1
+    lr_patches = list()
+    hr_patches = list()
     for p in tqdm(os.listdir(lr_dir)):
-        lr_patches = list()
-        hr_patches = list()
         image_number = p.split('_')[1].split('.')[0]    # Retrieve from the filename the number of the image
         image_hr_name = "img_{}_gt.png".format(image_number)
         image_lr_decoded = cv2.imread(os.path.join(lr_dir, p)).astype(np.float32) / 255.0
@@ -55,7 +55,6 @@ def gen_dataset_multiscale(lr_dir, hr_dir, scale):
             ii = i_s[i]*scale
             jj = j_s[i]*scale
             patch_hr = imgYCC_hr[ii:ii+size*scale, jj:jj+size*scale, 0]
-
             # random rotation
             rot = random.choice(rotate_factor)
             M_lr = cv2.getRotationMatrix2D((size/2, size/2), rot, 1)      # get the matrix that'll be used to rotate the low resolution image. Parameters: center, rotate factor, scale
@@ -85,18 +84,13 @@ def display_images(img1, img2):
     plt.axis('off')
 
 
-def retrieve_image_matrix(path):
-    with open(path, 'rb') as f:
-        return np.load(f)
-
-
 def retrieve_image_couples(lr_dir, hr_dir):
     lr_dir = lr_dir.decode()
     hr_dir = hr_dir.decode()
     for im in os.listdir(hr_dir):
         lr_im_name = im.replace("h", "l")
-        hr_im = retrieve_image_matrix(os.path.join(hr_dir, im))
-        lr_im = retrieve_image_matrix(os.path.join(lr_dir, lr_im_name))
+        hr_im = np.load(os.path.join(hr_dir, im))
+        lr_im = np.load(os.path.join(lr_dir, lr_im_name))
         yield lr_im.reshape((lr_im.shape[0], lr_im.shape[1], 1)), hr_im.reshape((hr_im.shape[0], hr_im.shape[1], 1))
 
 
@@ -109,9 +103,7 @@ def save_set(ls, folder):
     :return:
     """
     for patch, name in ls:
-        with open(os.path.join(folder, name), 'wb') as f:
-            np.save(f, patch)
-        f.close()
+        np.save(os.path.join(folder, name), patch)
 
 
 def main(args):
@@ -120,7 +112,7 @@ def main(args):
     hr_dir_src = args.hr_img_src
     lr_dir_dst = args.lr_patches_dst
     hr_dir_dst = args.hr_patches_dst
-    lr_patches, hr_patches = gen_dataset_multiscale(lr_dir_src, hr_dir_src, scale, lr_dir_dst, hr_dir_dst)
+    lr_patches, hr_patches = gen_dataset_multiscale(lr_dir_src, hr_dir_src, scale)
     save_set(lr_patches, lr_dir_dst)
     save_set(hr_patches, hr_dir_dst)
 

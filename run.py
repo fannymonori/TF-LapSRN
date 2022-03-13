@@ -57,8 +57,8 @@ def training():
     BATCH=32
     EPOCHS=10
     LRATE=0.0001
-    lr_dir = "dataset/train/lr_x2/train"
-    hr_dir = "dataset/train/gt/x2_train"
+    lr_dir = "raw_dataset/train/lr_x2/train"
+    hr_dir = "raw_dataset/train/gt/x2_train"
     config = tf.compat.v1.ConfigProto()
     config.gpu_options.allow_growth = True
 
